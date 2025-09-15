@@ -197,7 +197,7 @@
     <img src="download (9).jpg" alt="no maurice" id="maurice"></img>
     <img src="gabriel.jpg" alt="no daddy" id="gabriel"></img>
 
-    <p style="text-align:center; position:absolute; bottom:20px; left:50vw"> version: 1.0.1 </p>
+    <p style="text-align:center; position:absolute; bottom:20px; left:50vw"> version: 1.0.2 </p>
 
   <script type="module">
     import { doc, deleteDoc, getDoc} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
@@ -242,12 +242,13 @@
     
     const refreshRef = doc(db, "triggers", "refresh");
     
+    // Listener
     onSnapshot(refreshRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.value === 1) {
+        if (data.timestamp) {
           console.log("Global refresh triggered!");
-          location.reload(); // force reload
+          location.reload();
         }
       }
     });
@@ -305,16 +306,10 @@
     async function triggerRefresh() {
       const refreshRef = doc(db, "triggers", "refresh");
       await updateDoc(refreshRef, {
-        value: 1
+        timestamp: Date.now()   // always unique
       });
-
-      setTimeout(async () => {
-        await updateDoc(refreshRef, {
-          value: 0
-        })
-      }, 20000);
     }
-    
+        
     // Login / Register
     loginBtn.onclick = async () => {
       const username = usernameInput.value.trim();
