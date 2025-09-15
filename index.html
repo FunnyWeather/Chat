@@ -246,6 +246,7 @@
     let firstSnapshot = true;
     
     onSnapshot(refreshRef, (docSnap) => {
+      console.log("Refresh snapshot fired:", docSnap.data());
       if (!docSnap.exists()) return;
     
       const data = docSnap.data();
