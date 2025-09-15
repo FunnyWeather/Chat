@@ -304,12 +304,12 @@
       const CanChat = doc(db, "triggers", "chat");
       await updateDoc(CanChat, { value: val });
     }
-
+    
     async function triggerRefresh() {
       const refreshRef = doc(db, "triggers", "refresh");
-      await updateDoc(refreshRef, {
+      await setDoc(refreshRef, {
         timestamp: Date.now()
-      });
+      }, { merge: true });
     }
 
     // Login / Register
