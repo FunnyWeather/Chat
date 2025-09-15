@@ -308,7 +308,7 @@
     async function triggerRefresh() {
       const refreshRef = doc(db, "triggers", "refresh");
       await setDoc(refreshRef, {
-        timestamp: Date.now()
+        value: Date.now()
       }, { merge: true });
     }
 
