@@ -247,8 +247,8 @@
     onSnapshot(refreshRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.timestamp && data.timestamp > lastRefresh) {
-          lastRefresh = data.timestamp;  // update memory
+        if (data.value && data.value > lastRefresh) {
+          lastRefresh = data.value;  // update memory
           console.log("Global refresh triggered!");
           location.reload();
         }
