@@ -305,7 +305,7 @@
     async function triggerRefresh() {
       const refreshRef = doc(db, "triggers", "refresh");
       await updateDoc(refreshRef, {
-        value: 1;
+        value: 1
       });
 
       setTimeout(function () {
