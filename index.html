@@ -242,16 +242,25 @@
     
     const refreshRef = doc(db, "triggers", "refresh");
     
-    let lastRefresh = 0;  // per-tab memory
+    let lastRefresh = 0;
+    let firstSnapshot = true;
     
     onSnapshot(refreshRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.value && data.value > lastRefresh) {
-          lastRefresh = data.value;  // update memory
-          console.log("Global refresh triggered!");
-          location.reload();
-        }
+      if (!docSnap.exists()) return;
+    
+      const data = docSnap.data();
+    
+      if (firstSnapshot) {
+        // just initialize without reloading
+        lastRefresh = data.value || 0;
+        firstSnapshot = false;
+        return;
+      }
+    
+      if (data.value && data.value > lastRefresh) {
+        lastRefresh = data.value;
+        console.log("Global refresh triggered!");
+        location.reload();
       }
     });
 
