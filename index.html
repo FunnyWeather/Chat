@@ -1,39 +1,215 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Messages Viewer</title>
-  <style>
-    body {
-      font-family: monospace;
-      padding: 20px;
-    }
-    pre {
-      background-color: #f0f0f0;
-      padding: 10px;
-      border-radius: 5px;
-    }
-  </style>
+  <title>Firestore Chat</title>
 </head>
-<body>
-  <h1>Messages from Database</h1>
-  <pre id="messages">Loading...</pre>
+<body style="background-color: #3d3d3d; color: white;">
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; }
+    #broadcastDiv { position: fixed; bottom: 20px; width: 100%; }
+  </style>
 
-  <script>
-    async function fetchMessages() {
+  <div id="broadcastDiv">
+    <h2 style="text-align: center;" id="broadcast">no broadcast at the moment</h2>
+  </div>
+
+  <!-- LOGIN UI -->
+  <div id="loginBox">
+    <h2>Login</h2>
+    <input id="username" placeholder="Username"><br><br>
+    <input id="password" type="password" placeholder="Password"><br><br>
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <!-- CHAT UI -->
+  <div id="chatUI" style="display:none;">
+    <button id="logoutBtn">Logout</button><br><br>
+    <input id="msg" placeholder="message">
+    <button id="send">Send</button>
+    <div id="chat"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, query, where, doc, updateDoc, getDocs, orderBy, onSnapshot, increment, getDoc
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyADuus9QP-KyaUd5SrY5IMP2_DZfNMbaDs",
+      authDomain: "chatdata-d1bb0.firebaseapp.com",
+      projectId: "chatdata-d1bb0",
+      storageBucket: "chatdata-d1bb0.firebasestorage.app",
+      messagingSenderId: "454474717430",
+      appId: "1:454474717430:web:588dee91a19bd72bc9b4d7",
+      measurementId: "G-0PQFE6PHVM"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let accountName = "";
+    let userIP = "";
+
+    const loginBox = document.getElementById("loginBox");
+    const chatUI = document.getElementById("chatUI");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const userInput = document.getElementById("username");
+    const passInput = document.getElementById("password");
+    const sendBtn = document.getElementById("send");
+    const msgInput = document.getElementById("msg");
+    const chatDiv = document.getElementById("chat");
+    const broadcastText = document.getElementById("broadcast");
+
+    const listenersRef = doc(db, "triggers", "listeners");
+    const canChatRef = doc(db, "triggers", "chat");
+    const refreshRef = doc(db, "triggers", "refresh");
+    const broadcastRef = doc(db, "broadcasts", "broadcast");
+
+    // ---------------- BROADCAST ----------------
+    onSnapshot(broadcastRef, (docSnap) => {
+      if (docSnap.exists()) broadcastText.innerHTML = docSnap.data().message;
+    });
+
+    let canChat = true;
+
+    // ---------------- REFRESH LISTENER ----------------
+    let lastRefreshValue = null;
+    onSnapshot(refreshRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const currentValue = Number(docSnap.data().value);
+        if (lastRefreshValue !== null && currentValue !== lastRefreshValue) location.reload();
+        lastRefreshValue = currentValue;
+      }
+    });
+
+    // ---------------- HEARTBEAT ----------------
+    async function startHeartbeat() {
+      await updateDoc(listenersRef, { value: increment(1) });
+    }
+
+    window.addEventListener("beforeunload", async () => {
+      try { await updateDoc(listenersRef, { value: increment(-1) }); } catch {}
+    });
+
+    startHeartbeat();
+
+    // ---------------- CAN CHAT LISTENER ----------------
+    onSnapshot(canChatRef, (docSnap) => {
+      if (docSnap.exists()) canChat = Boolean(Number(docSnap.data().value));
+    });
+
+    // ---------------- GET PUBLIC IP ----------------
+    async function getPublicIP() {
       try {
-        const response = await fetch("https://chatdata.duckdns.org/messages");
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        const data = await response.json();
-        document.getElementById("messages").textContent = JSON.stringify(data, null, 2);
-      } catch (error) {
-        document.getElementById("messages").textContent = "Error fetching messages: " + error;
+        const res = await fetch("https://api.ipify.org?format=json");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        console.log("Fetched IP:", data.ip);
+        return data.ip;
+      } catch (err) {
+        console.error("Could not get public IP:", err);
+        return "unknown";
       }
     }
 
-    fetchMessages();
+    // ---------------- CHECK BAN ----------------
+    async function checkBan(ip) {
+      try {
+        const bannedRef = doc(db, "banned", "banned ip");
+        const bannedSnap = await getDoc(bannedRef);
+        if (!bannedSnap.exists()) return false;
+        const ips = bannedSnap.data().ips || [];
+        if (ips.includes(ip)) {
+          console.log(`User with IP ${ip} is banned`);
+          return true;
+        }
+      } catch (err) {
+        console.error("Ban check failed:", err);
+      }
+      return false;
+    }
+
+    // ---------------- LOGIN / SIGNUP ----------------
+    loginBtn.onclick = async () => {
+      const u = userInput.value.trim();
+      const p = passInput.value.trim();
+      if (!u || !p) return alert("Enter username and password");
+
+      userIP = await getPublicIP();
+      console.log("User IP:", userIP);  // <-- check here
+      if (!userIP) console.warn("Could not fetch IP for ban check");
+
+      const isBanned = await checkBan(userIP);
+      if (isBanned) console.warn("Banned user tried to log in.");
+
+      const usersRef = collection(db, "users");
+      const qUsername = query(usersRef, where("username", "==", u));
+      const snap = await getDocs(qUsername);
+
+      // CASE 1 — EXISTING USER
+      if (snap.size > 0) {
+        const userData = snap.docs[0].data();
+        if (userData.password === p) {
+          accountName = u;
+          loginBox.style.display = "none";
+          chatUI.style.display = "block";
+          return;
+        } else {
+          alert("Password incorrect.");
+          return;
+        }
+      }
+
+      // CASE 2 — NEW USER
+      await addDoc(usersRef, { username: u, password: p, ip: userIP });
+      accountName = u;
+      loginBox.style.display = "none";
+      chatUI.style.display = "block";
+      alert("New account created!");
+    };
+
+    // ---------------- LOGOUT ----------------
+    logoutBtn.onclick = async () => {
+      try { await updateDoc(listenersRef, { value: increment(-1) }); } catch {}
+      accountName = "";
+      userInput.value = "";
+      passInput.value = "";
+      chatUI.style.display = "none";
+      loginBox.style.display = "block";
+    };
+
+    // ---------------- SEND MESSAGE ----------------
+    sendBtn.onclick = async () => {
+      if (!canChat) return alert("Can't chat");
+      const raw = msgInput.value.trim();
+      if (!raw) return;
+
+      if (/<\/?[^>]+>/gi.test(raw)) return alert("HTML not allowed");
+      const forbidden = ["data:image/", "<img", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", "base64,"];
+      if (forbidden.some(p => raw.toLowerCase().includes(p))) return alert("Images not allowed");
+
+      await addDoc(collection(db, "messages"), { user: accountName, message: raw, time: Date.now() });
+      msgInput.value = "";
+    };
+
+    // ---------------- REAL-TIME CHAT ----------------
+    onSnapshot(query(collection(db, "messages"), orderBy("time")), snapshot => {
+      chatDiv.innerHTML = "";
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const line = document.createElement("div");
+        const userSpan = document.createElement("b");
+        userSpan.textContent = data.user + ": ";
+        const msgSpan = document.createElement("span");
+        msgSpan.textContent = data.message;
+        line.appendChild(userSpan);
+        line.appendChild(msgSpan);
+        chatDiv.appendChild(line);
+      });
+    });
+
   </script>
 </body>
 </html>
